@@ -14,3 +14,124 @@ bq load --source_format=CSV \
  --location=EUA \
  --autodetectar filmes.movielens_movies_raw \
  gs://dataeng-movielens/movies.csv
+
+
+
+ ----------------------------------------------------------------
+ --- Explorar os dados
+
+ SELECT
+  COUNT(DISTINCT userId) numUsers,
+  COUNT(DISTINCT movieId) numMovies,
+  COUNT(*) totalRatings
+FROM
+  movies.movielens_ratings;
+
+  -- Examine os primeiros filmes usando a consulta:
+
+  SELECT
+  *
+FROM
+  movies.movielens_movies_raw
+WHERE
+  movieId < 5;
+
+ ---  
+ CREATE OR REPLACE TABLE
+  movies.movielens_movies AS
+SELECT
+  * REPLACE(SPLIT(genres, "|") AS genres)
+FROM
+  movies.movielens_movies_raw;
+
+  -----
+  SELECT
+  *
+FROM
+  ML.PREDICT(MODEL `cloud-training-demos.movielens.recommender`,
+    (
+    SELECT
+      movieId,
+      title,
+      903 AS userId
+    FROM
+      `movies.movielens_movies`,
+      UNNEST(genres) g
+    WHERE
+      g = 'Comedy' ))
+ORDER BY
+  predicted_rating DESC
+LIMIT
+  5  ;
+
+  ----------
+
+  SELECT
+  *
+FROM
+  ML.PREDICT(MODEL `cloud-training-demos.movielens.recommender`,
+    (
+    WITH
+      seen AS (
+      SELECT
+        ARRAY_AGG(movieId) AS movies
+      FROM
+        movies.movielens_ratings
+      WHERE
+        userId = 903 )
+    SELECT
+      movieId,
+      title,
+      903 AS userId
+    FROM
+      movies.movielens_movies,
+      UNNEST(genres) g,
+      seen
+    WHERE
+      g = 'Comedy'
+      AND movieId NOT IN UNNEST(seen.movies) ))
+ORDER BY
+  predicted_rating DESC
+LIMIT
+  5;
+
+
+
+    SELECT
+    *
+  FROM
+    ML.PREDICT(MODEL `cloud-training-demos.movielens.recommender`,
+      (
+      WITH
+        allUsers AS (
+        SELECT
+          DISTINCT userId
+        FROM
+          movies.movielens_ratings )
+      SELECT
+        96481 AS movieId,
+        (
+        SELECT
+          title
+        FROM
+          movies.movielens_movies
+        WHERE
+          movieId=96481) title,
+        userId
+      FROM
+        allUsers ))
+  ORDER BY
+    predicted_rating DESC
+  LIMIT
+    100;
+
+
+/*
+Executar previsões em lote para todos os usuários e filmes
+*/
+      SELECT
+    *
+  FROM
+    ML.RECOMMEND(MODEL `cloud-training-demos.movielens.recommender`)
+  LIMIT 
+    100000
