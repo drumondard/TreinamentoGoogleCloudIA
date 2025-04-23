@@ -1,0 +1,16 @@
+---Criar e carregar conjunto de dados do BigQuery
+--Execute o seguinte comando para criar um conjunto de dados do BigQuery chamado movies:
+
+--- Execute os seguintes comandos separadamente no Cloud Shell:
+
+bq --location=US mk --dataset filmes
+
+bq load --source_format=CSV \
+ --location=EUA \
+ --autodetect filmes.movielens_ratings \
+ gs://dataeng-movielens/ratings.csv
+
+bq load --source_format=CSV \
+ --location=EUA \
+ --autodetectar filmes.movielens_movies_raw \
+ gs://dataeng-movielens/movies.csv
