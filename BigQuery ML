@@ -1,0 +1,146 @@
+--- Preveja a duração da viagem de bicicleta com um modelo de regressão no BQML 2.5
+
+## BigQuery usa SQL
+/*
+Objetivos
+Neste laboratório, você aprenderá a executar as seguintes tarefas:
+
+Consulte e explore o conjunto de dados de bicicletas de Londres para engenharia de recursos
+Crie um modelo de regressão linear no BigQuery ML
+Avalie o desempenho do seu modelo de aprendizado de máquina
+Extraia os pesos do seu modelo
+*/
+
+-- treinar o modelo de ML e salvá-lo no conjunto de dados bike_model
+CREATE OR REPLACE MODEL
+  bike_model.model
+OPTIONS
+  (input_label_cols=['duration'],
+    model_type='linear_reg') AS
+SELECT
+  duration,
+  start_station_name,
+  CAST(EXTRACT(dayofweek
+    FROM
+      start_date) AS STRING) AS dayofweek,
+  CAST(EXTRACT(hour
+    FROM
+      start_date) AS STRING) AS hourofday
+FROM
+  `bigquery-public-data`.london_bicycles.cycle_hire
+  WHERE `duration` IS NOT NULL;
+
+-- Para ver algumas métricas relacionadas ao treinamento do modelo, insira a seguinte consulta na janela do editor do BigQuer
+SELECT * FROM ML.EVALUATE(MODEL `bike_model.model`)
+
+/*
+Crie um modelo do BigQuery ML com o recurso combinado de dias da semana usando a seguinte consulta:
+*/
+CREATE OR REPLACE MODEL
+  bike_model.model_weekday
+OPTIONS
+  (input_label_cols=['duration'],
+    model_type='linear_reg') AS
+SELECT
+  duration,
+  start_station_name,
+IF
+  (EXTRACT(dayofweek
+    FROM
+      start_date) BETWEEN 2 AND 6,
+    'weekday',
+    'weekend') AS dayofweek,
+  CAST(EXTRACT(hour
+    FROM
+      start_date) AS STRING) AS hourofday
+FROM
+  `bigquery-public-data`.london_bicycles.cycle_hire
+  WHERE `duration` IS NOT NULL;
+
+  -- Para ver as métricas deste modelo, insira a seguinte consulta na janela do editor do BigQuery:
+  SELECT * FROM ML.EVALUATE(MODEL `bike_model.model_weekday`)
+
+ /*
+ Crie um modelo do BigQuery ML com os recursos de hora do dia e dias da semana combinados usando a consulta abaixo:
+ */ 
+ CREATE OR REPLACE MODEL
+  bike_model.model_bucketized
+OPTIONS
+  (input_label_cols=['duration'],
+    model_type='linear_reg') AS
+SELECT
+  duration,
+  start_station_name,
+IF
+  (EXTRACT(dayofweek
+    FROM
+      start_date) BETWEEN 2 AND 6,
+    'weekday',
+    'weekend') AS dayofweek,
+  ML.BUCKETIZE(EXTRACT(hour
+    FROM
+      start_date),
+    [5, 10, 17]) AS hourofday
+FROM
+  `bigquery-public-data`.london_bicycles.cycle_hire
+  WHERE `duration` IS NOT NULL;
+
+  --- Para ver as métricas deste modelo, insira a seguinte consulta na janela do editor do BigQuery:
+
+  SELECT * FROM ML.EVALUATE(MODEL `bike_model.model_bucketized`)
+
+/*
+Crie um modelo do BigQuery ML com a TRANSFORMcláusula que incorpora os recursos de hora do dia em blocos e dias da semana combinados usando a consulta abaixo:
+*/
+  CREATE OR REPLACE MODEL
+  bike_model.model_bucketized TRANSFORM(* EXCEPT(start_date),
+  IF
+    (EXTRACT(dayofweek
+      FROM
+        start_date) BETWEEN 2 AND 6,
+      'weekday',
+      'weekend') AS dayofweek,
+    ML.BUCKETIZE(EXTRACT(HOUR
+      FROM
+        start_date),
+      [5, 10, 17]) AS hourofday )
+OPTIONS
+  (input_label_cols=['duration'],
+    model_type='linear_reg') AS
+SELECT
+  duration,
+  start_station_name,
+  start_date
+FROM
+  `bigquery-public-data`.london_bicycles.cycle_hire
+  WHERE `duration` IS NOT NULL;
+
+  -- Com a TRANSFORMcláusula em vigor, insira esta consulta para prever a duração de um aluguel na Park Lane agora (seu resultado pode variar):
+
+  SELECT
+  *
+FROM
+  ML.PREDICT(MODEL bike_model.model_bucketized,
+    (
+    SELECT
+      'Park Lane , Hyde Park' AS start_station_name,
+      CURRENT_TIMESTAMP() AS start_date) );
+
+--- Para fazer previsões em lote em uma amostra de 100 linhas no conjunto de treinamento, use a consulta: 
+
+SELECT
+  *
+FROM
+  ML.PREDICT(MODEL bike_model.model_bucketized,
+    (
+    SELECT
+      start_station_name,
+      start_date
+    FROM
+      `bigquery-public-data`.london_bicycles.cycle_hire
+    LIMIT
+      100) )
+
+--- Examine (ou exporte) os pesos do seu modelo usando a consulta abaixo:
+
+SELECT * FROM ML.WEIGHTS(MODEL bike_model.model_bucketized)
